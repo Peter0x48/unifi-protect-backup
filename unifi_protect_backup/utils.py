@@ -363,18 +363,32 @@ class SubprocessException(Exception):
         return f"Return Code: {self.returncode}\nStdout:\n{self.stdout}\nStderr:\n{self.stderr}"
 
 
-async def run_command(cmd: str, data=None):
-    """Run the given command returning the exit code, stdout and stderr."""
+async def run_command(cmd: str, data=None, timeout: float | None = None):
+    """Run the given command returning the exit code, stdout and stderr.
+
+    Args:
+        cmd (str): The shell command to run
+        data (bytes | None): Optional data to pipe to stdin
+        timeout (float | None): Optional timeout in seconds. If the command does not
+            complete within this time the process is killed and
+            ``asyncio.TimeoutError`` is raised.
+
+    """
     proc = await asyncio.create_subprocess_shell(
         cmd,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout, stderr = await proc.communicate(data)
-    stdout = stdout.decode()
+    try:
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(proc.communicate(data), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.communicate()
+        raise
+    stdout = stdout_bytes.decode()
     stdout_indented = "\t" + stdout.replace("\n", "\n\t").strip()
-    stderr = stderr.decode()
+    stderr = stderr_bytes.decode()
     stderr_indented = "\t" + stderr.replace("\n", "\n\t").strip()
 
     if proc.returncode != 0:

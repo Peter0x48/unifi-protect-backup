@@ -96,6 +96,7 @@ class VideoDownloader:
                 self.logger.debug("Waiting for rate limit")
                 await self._limiter.acquire()
 
+            event = None
             try:
                 # Wait for unifi protect to be connected
                 await self._protect.connect_event.wait()
@@ -174,7 +175,10 @@ class VideoDownloader:
                 self.current_event = None
 
             except Exception as e:
-                self.logger.error(f"Unexpected exception occurred, abandoning event {event.id}:", exc_info=e)
+                self.logger.error(
+                    f"Unexpected exception occurred, abandoning event {event.id if event is not None else 'unknown'}:",
+                    exc_info=e,
+                )
 
     async def _download(self, event: Event) -> Optional[bytes]:
         """Download the video clip for the given event."""

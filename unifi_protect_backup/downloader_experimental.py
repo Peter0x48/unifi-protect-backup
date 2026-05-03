@@ -5,6 +5,7 @@ import json
 import logging
 import shutil
 from datetime import datetime, timedelta, timezone
+from sqlite3 import IntegrityError
 from typing import Optional
 
 import aiosqlite
@@ -94,6 +95,7 @@ class VideoDownloaderExperimental:
                 self.logger.debug("Waiting for rate limit")
                 await self._limiter.acquire()
 
+            event = None
             try:
                 # Wait for unifi protect to be connected
                 await self._protect.connect_event.wait()
@@ -176,7 +178,7 @@ class VideoDownloaderExperimental:
 
             except Exception as e:
                 self.logger.error(
-                    f"Unexpected exception occurred, abandoning event {event.id}:",
+                    f"Unexpected exception occurred, abandoning event {event.id if event is not None else 'unknown'}:",
                     exc_info=e,
                 )
 
@@ -208,11 +210,14 @@ class VideoDownloaderExperimental:
 
     async def _ignore_event(self, event):
         self.logger.warning("Ignoring event")
-        await self._db.execute(
-            "INSERT INTO events VALUES "
-            f"('{event.id}', '{event.type.value}', '{event.camera_id}',"
-            f"'{event.start.timestamp()}', '{event.end.timestamp()}')"
-        )
+        try:
+            await self._db.execute(
+                "INSERT INTO events VALUES "
+                f"('{event.id}', '{event.type.value}', '{event.camera_id}',"
+                f"'{event.start.timestamp()}', '{event.end.timestamp()}')"
+            )
+        except IntegrityError:
+            self.logger.debug(f"Event {event.id} already exists in database, skipping")
         await self._db.commit()
 
     async def _check_video_length(self, video, duration):

@@ -1,5 +1,6 @@
 # noqa: D100
 
+import asyncio
 import logging
 import pathlib
 import re
@@ -36,6 +37,7 @@ class VideoUploader:
         file_structure_format: str,
         db: aiosqlite.Connection,
         color_logging: bool,
+        rclone_timeout: float | None = None,
     ):
         """Init.
 
@@ -47,6 +49,9 @@ class VideoUploader:
             file_structure_format (str): format string for how to structure the uploaded files
             db (aiosqlite.Connection): Async SQlite database connection
             color_logging (bool):  Whether or not to add color to logging output
+            rclone_timeout (float | None): Timeout in seconds for each rclone upload. If the
+                upload does not complete within this time it is abandoned and an error is
+                logged. Defaults to None (no timeout).
 
         """
         self._protect: ProtectApiClient = protect
@@ -55,6 +60,7 @@ class VideoUploader:
         self._rclone_args: str = rclone_args
         self._file_structure_format: str = file_structure_format
         self._db: aiosqlite.Connection = db
+        self._rclone_timeout: float | None = rclone_timeout
         self.current_event = None
 
         self.base_logger = logging.getLogger(__name__)
@@ -69,6 +75,7 @@ class VideoUploader:
         """
         self.logger.info("Starting Uploader")
         while True:
+            event = None
             try:
                 event, video = await self.upload_queue.get()
                 self.current_event = event
@@ -92,11 +99,18 @@ class VideoUploader:
                     self.logger.debug(f" Event {event.id} already exists in database, skipping")
                 except SubprocessException:
                     self.logger.error(f" Failed to upload file: '{destination}'")
+                except asyncio.TimeoutError:
+                    self.logger.error(
+                        f" Upload timed out after {self._rclone_timeout}s, abandoning: '{destination}'"
+                    )
 
                 self.current_event = None
 
             except Exception as e:
-                self.logger.error(f"Unexpected exception occurred, abandoning event {event.id}:", exc_info=e)
+                self.logger.error(
+                    f"Unexpected exception occurred, abandoning event {event.id if event is not None else 'unknown'}:",
+                    exc_info=e,
+                )
 
     async def _upload_video(self, video: bytes, destination: pathlib.Path, rclone_args: str):
         """Upload video using rclone.
@@ -111,9 +125,12 @@ class VideoUploader:
 
         Raises:
             RuntimeError: If rclone returns a non-zero exit code
+            asyncio.TimeoutError: If the upload does not complete within ``rclone_timeout`` seconds
 
         """
-        returncode, stdout, stderr = await run_command(f'rclone rcat -vv {rclone_args} "{destination}"', video)
+        returncode, stdout, stderr = await run_command(
+            f'rclone rcat -vv {rclone_args} "{destination}"', video, timeout=self._rclone_timeout
+        )
         if returncode != 0:
             raise SubprocessException(stdout, stderr, returncode)
 
