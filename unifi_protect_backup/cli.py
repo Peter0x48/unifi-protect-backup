@@ -254,6 +254,14 @@ a lot of failed downloads with the default downloader.
 """,
 )
 @click.option(
+    "--rclone-timeout",
+    default=None,
+    envvar="RCLONE_TIMEOUT",
+    type=float,
+    help="Timeout in seconds for each rclone upload. If an upload does not complete within "
+    "this time it is abandoned and an error is logged. Disabled by default (no timeout).",
+)
+@click.option(
     "--parallel-uploads",
     default=1,
     show_default=True,

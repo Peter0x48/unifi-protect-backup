@@ -87,6 +87,7 @@ class UnifiProtectBackup:
         port: int = 443,
         use_experimental_downloader: bool = False,
         parallel_uploads: int = 1,
+        rclone_timeout: float | None = None,
     ):
         """Will configure logging settings and the Unifi Protect API (but not actually connect).
 
@@ -125,6 +126,9 @@ class UnifiProtectBackup:
             use_experimental_downloader (bool): Use the new experimental downloader (the same method as used by the
                                                 webUI)
             parallel_uploads (int): Max number of parallel uploads to allow
+            rclone_timeout (float | None): Timeout in seconds for each rclone upload. If an upload
+                                           does not complete within this time it is abandoned and an
+                                           error is logged. Defaults to None (no timeout).
 
         """
         self.color_logging = color_logging
@@ -166,6 +170,7 @@ class UnifiProtectBackup:
         logger.debug(f"  {max_event_length=}s")
         logger.debug(f"  {use_experimental_downloader=}")
         logger.debug(f"  {parallel_uploads=}")
+        logger.debug(f"  {rclone_timeout=}s")
 
         self.rclone_destination = rclone_destination
         self.retention = retention
@@ -203,6 +208,7 @@ class UnifiProtectBackup:
         self._max_event_length = timedelta(seconds=max_event_length)
         self._use_experimental_downloader = use_experimental_downloader
         self._parallel_uploads = parallel_uploads
+        self._rclone_timeout = rclone_timeout
 
     async def start(self):
         """Bootstrap the backup process and kick off the main loop.
@@ -297,6 +303,7 @@ class UnifiProtectBackup:
                     self.file_structure_format,
                     self._db,
                     self.color_logging,
+                    rclone_timeout=self._rclone_timeout,
                 )
                 uploaders.append(uploader)
                 tasks.append(uploader.start())
